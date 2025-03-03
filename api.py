@@ -1,110 +1,55 @@
-import aiohttp
 import json
-import logging
-
-_LOGGER = logging.getLogger(__name__)
-DEFAULT_BRIGHTNESS = 50  # Angiv din standard lysstyrkeværdi her
+import websocket
 
 class ThermexAPI:
-    """Class to interact with the Thermex API."""
-
     def __init__(self, host, code):
         self._host = host
         self._password = code
+        ws_url = f'ws://{self._host}:9999/api'
+        self.ws = websocket.create_connection(ws_url)
+        self.authenticate()
 
-    async def authenticate(self, websocket):
-        auth_message = {
+    def __del__(self):
+        self.ws.close()
+
+    def authenticate(self):
+        return self.transceive({
             "Request": "Authenticate",
             "Data": {"Code": self._password}
-        }
-        _LOGGER.debug("Authentication started")
-        await websocket.send_json(auth_message)
-        response = await websocket.receive()
-        response_data = json.loads(response.data)
-        if response_data.get("Status") == 200:
-            _LOGGER.info("Authentication successful")
-            return True
-        else:
-            _LOGGER.error("Authentication failed")
-            return False
+        }, allow_codes=(200,))
 
-    async def fetch_status(self):
-        """Fetch status of fan and light."""
-        async with aiohttp.ClientSession() as session:
-            async with session.ws_connect(f'ws://{self._host}:9999/api') as websocket:
-                await self.authenticate(websocket)
-                _LOGGER.debug("Fetching fan and light status")
-                await websocket.send_json({"Request": "STATUS"})
-                response = await websocket.receive()
-                response = json.loads(response.data)
-                _LOGGER.debug("Status response: %s", response)
-                if response.get("Response") == "Status":
-                    return response.get("Data")
-                else:
-                    _LOGGER.error("Error fetching status: %s", response)
-                    raise Exception("Unexpected response from Thermex API")
+    def transceive(self, message, allow_codes=(200, 400)):
+        self.ws.send(json.dumps(message))
 
-    async def get_status(self):
-        """Get the status of the fan."""
-        async with aiohttp.ClientSession() as session:
-            async with session.ws_connect(f'ws://{self._host}:9999/api') as websocket:
-                if await self.authenticate(websocket):
-                    _LOGGER.debug("api.py forsøger at efterspørge status")
-                    await websocket.send_json({"Request": "STATUS"})
-                    response = await websocket.receive()
-                    response = json.loads(response.data)
-                    _LOGGER.debug("api.py response fra fan_status: %s", response)
-                    if response.get("Response") == "Status":
-                        return response.get("Data")
-                    else:
-                        _LOGGER.error("api.py Fejl ved hentning af fan status: %s", response)
-                        raise Exception("api.py Uventet svar fra Thermex API")
-                else:
-                    _LOGGER.error("api.py Fejl under hentning af fan status")
+        while response := json.loads(self.ws.recv()) and response.get("Notify"):
+            print("Discarding notify:", response)
 
-    async def update_fan(self, fanonoff, fanspeed):
-        """Update fan settings."""
-        async with aiohttp.ClientSession() as session:
-            async with session.ws_connect(f'ws://{self._host}:9999/api') as websocket:
-                if await self.authenticate(websocket):
-                    update_message = {
-                        "Request": "Update",
-                        "Data": {
-                            "fan": {
-                                "fanonoff": fanonoff,
-                                "fanspeed": fanspeed
-                            }
-                        }
-                    }
-                    await websocket.send_json(update_message)
-                    response = await websocket.receive()
-                    _LOGGER.debug("Update response: %s", response.data)
-                    _LOGGER.info("Update successful")
-                else:
-                    _LOGGER.error("Update failed due to authentication failure")
+        if response.get("Status") not in allow_codes:
+            raise Exception("Unexpected response from Thermex API", message, response)
 
-    async def update_light(self, lightonoff, brightness=None):
-        """Update light settings."""
-        _LOGGER.debug("update_light(%s)", lightonoff)
-        async with aiohttp.ClientSession() as session:
-            async with session.ws_connect(f'ws://{self._host}:9999/api') as websocket:
-                if await self.authenticate(websocket):
-                    if brightness is None:
-                        brightness = DEFAULT_BRIGHTNESS
+        return response
 
-                    update_message = {
-                        "Request": "Update",
-                        "Data": {
-                            "light": {
-                                "lightonoff": lightonoff,
-                                "lightbrightness": brightness
-                            }
-                        }
-                    }
-                    _LOGGER.debug("update_msg=%s", update_message)
-                    await websocket.send_json(update_message)
-                    response = await websocket.receive()
-                    _LOGGER.debug("Update response: %s", response.data)
-                    _LOGGER.info("Update successful")
-                else:
-                    _LOGGER.error("Update failed due to authentication failure")
+    def fetch_status(self):
+        return self.transceive({"Request": "STATUS"})
+
+    def update_fan(self, fanonoff, fanspeed):
+        return self.transceive({
+            "Request": "Update",
+            "Data": {
+                "fan": {
+                    "fanonoff": fanonoff,
+                    "fanspeed": fanspeed
+                }
+            }
+        })
+
+    def update_light(self, lightonoff, brightness):
+        return self.transceive({
+            "Request": "Update",
+            "Data": {
+                "light": {
+                    "lightonoff": lightonoff,
+                    "lightbrightness": brightness
+                }
+            }
+        })

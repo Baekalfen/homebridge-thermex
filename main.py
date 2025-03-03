@@ -1,6 +1,5 @@
 import paho.mqtt.client as mqtt
 from api import ThermexAPI
-import asyncio
 
 mosquitto_hostname = "mosquitto"
 API = ThermexAPI('192.168.5.4', '1234')
@@ -20,7 +19,7 @@ def on_message(client, userdata, msg):
         state = msg.payload.decode()
         new_state = state == "true"
         # We are guessing a speed here, as the API is designed differently
-        asyncio.run(API.update_fan(new_state, last_speed))
+        print(API.update_fan(new_state, last_speed))
         client.publish(base_topic + "/get_active", new_state)
     elif topic == "set_speed":
         value = msg.payload.decode()
@@ -29,13 +28,14 @@ def on_message(client, userdata, msg):
             return
         speed = max(min(int(value)//25, 4), 0)
         last_speed = speed
-        asyncio.run(API.update_fan(speed>0, speed))
+        print("Speed", speed)
+        print(API.update_fan(speed>0, speed))
         client.publish(base_topic + "/get_speed", speed*25)
     elif topic == "set_on":
         state = msg.payload.decode()
         new_state = state == "true"
         # We are guessing a brightness here, as the API is designed differently
-        asyncio.run(API.update_light(new_state, last_brightness))
+        print(API.update_light(new_state, last_brightness))
         client.publish(base_topic + "/get_on", new_state)
     elif topic == "set_brightness":
         value = msg.payload.decode()
@@ -44,10 +44,12 @@ def on_message(client, userdata, msg):
             return
         brightness = max(min(int(value), 100), 0)
         last_brightness = brightness
-        asyncio.run(API.update_light(brightness>0, brightness))
-        client.publish(base_topic + "/get_brightness", new_state)
+        print(API.update_light(brightness>0, brightness))
+        client.publish(base_topic + "/get_brightness", brightness)
+    elif topic in ["get_active", "get_speed", "get_on", "get_brightness"]:
+        pass
     else:
-        print("Unknown topic:", topic, msg)
+        print("Unknown topic:", topic, msg.payload)
 
 
 client = mqtt.Client()
