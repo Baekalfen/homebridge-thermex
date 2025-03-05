@@ -1,3 +1,4 @@
+import time
 import paho.mqtt.client as mqtt
 from api import ThermexAPI
 
@@ -57,7 +58,27 @@ client.on_message = on_message
 client.connect(mosquitto_hostname, 1883, 60)
 
 client.subscribe(base_topic+"/#")
-client.loop_forever()
+# client.loop_forever()
 
+last_update = 0
+delay = 60 * 5
+if __name__ == "__main__":
+    client.loop_start()
+    while True:
+        if last_update + delay < time.time():
+            data = API.fetch_status()
+            if data.get('Status') == 200:
+                light = data.get('Data',{}).get("Light")
+                fan = data.get('Data',{}).get("Fan")
+                print("Update:", light, fan)
+                client.publish(base_topic + "/get_active", fan.get("fanonoff", 0))
+                client.publish(base_topic + "/get_speed", fan.get("fanspeed", 0)*25)
+                client.publish(base_topic + "/get_on", light.get("lightonoff", 0))
+                client.publish(base_topic + "/get_brightness", light.get("lightbrightness", 0))
+                last_update = time.time()
+            else:
+                time.sleep(30)
 
+        time.sleep(0.25)
+    client.loop_stop(force=False)
 
