@@ -66,6 +66,7 @@ if __name__ == "__main__":
     client.loop_start()
     while True:
         if last_update + delay < time.time():
+            API.reconnect() # Try to avoid broken connections
             data = API.fetch_status()
             if data.get('Status') == 200:
                 light = data.get('Data',{}).get("Light")

@@ -9,6 +9,9 @@ class ThermexAPI:
         self.reconnect()
 
     def reconnect(self):
+        if hasattr(self, 'ws'):
+            self.ws.close()
+
         ws_url = f'ws://{self._host}:9999/api'
         self.ws = websocket.create_connection(ws_url)
 
@@ -18,7 +21,8 @@ class ThermexAPI:
         }, allow_codes=(200,))
 
     def __del__(self):
-        self.ws.close()
+        if hasattr(self, 'ws'):
+            self.ws.close()
 
     def transceive(self, message, allow_codes=(200, 400)):
         for n in range(5):
